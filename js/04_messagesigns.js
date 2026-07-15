@@ -57,12 +57,28 @@ function parseDeDmsLocation(title) {
 // observed in samples so far.
 function stripDeMessageHtml(raw) {
   if (!raw) return '';
-  return raw
+  let text = raw
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/<[^>]*>/g, '')
     .replace(/-{3,}/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // DelDOT's standard statewide "Move Over" safety message comes through
+  // with zero separators between words on some signs (their source data
+  // itself concatenates them — this isn't something the HTML-stripping
+  // above can recover, since there's no delimiter there to begin with),
+  // e.g. "MOVE OVERORSLOW DOWN...FORSTOPPEDVEHICLES" instead of
+  // "MOVE OVER OR SLOW DOWN...FOR STOPPED VEHICLES". Targeted fix for
+  // this one specific recurring canned message, since it shows up often —
+  // won't help with other messages that have the same concatenation issue
+  // if any exist, since there's no general way to guess word boundaries
+  // in arbitrary squished text.
+  text = text
+    .replace(/\bMOVE OVERORSLOW DOWN\b/i, 'MOVE OVER OR SLOW DOWN')
+    .replace(/\bFORSTOPPEDVEHICLES\b/i, 'FOR STOPPED VEHICLES');
+
+  return text;
 }
 
 function parseDeDmsSigns(records) {
