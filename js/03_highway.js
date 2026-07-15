@@ -306,19 +306,27 @@ function parseDeMilemarkerRoute(attrs) {
 
 function parseDeMilemarkerMp(legendText) {
   if (!legendText) return null;
-  const m = String(legendText).match(/(\d+(?:\.\d+)?)/);
+  // LEGEND_TEXT splits the whole and fractional parts across a semicolon,
+  // e.g. "MM 3; .5" for mile 3.5 — note the fractional part (".5") already
+  // has its own leading dot, so just remove the "; " sequence entirely
+  // (concatenating "3" + ".5" = "3.5") rather than inserting another dot,
+  // which would produce "3..5" and break the number match below.
+  // (Confirmed from a live sample: an I-95 marker's LEGEND_TEXT read
+  // "3; .5" for what should be mile 3.5.)
+  const normalized = String(legendText).replace(/;\s*/g, '');
+  const m = normalized.match(/(\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : null;
 }
 
-const DE_FACING_TO_DIR = {
-  N: 'Northbound', NB: 'Northbound', NORTH: 'Northbound', NORTHBOUND: 'Northbound',
-  S: 'Southbound', SB: 'Southbound', SOUTH: 'Southbound', SOUTHBOUND: 'Southbound',
-  E: 'Eastbound', EB: 'Eastbound', EAST: 'Eastbound', EASTBOUND: 'Eastbound',
-  W: 'Westbound', WB: 'Westbound', WEST: 'Westbound', WESTBOUND: 'Westbound',
-};
+// SIGN_FACING turned out unreliable — a real sample showed "E" on an I-95
+// marker, which makes no sense for a north-south interstate. Rather than
+// have bad-but-present direction data silently zero out every candidate
+// (a marker whose direction doesn't match ours gets excluded, but so does
+// a marker with WRONG direction data, since the "no direction data" fallback
+// only catches markers with no data at all) — just don't populate
+// direction from this field. Falls back to bearing-only, same as MD.
 function parseDeMilemarkerDirection(signFacing) {
-  if (!signFacing) return null;
-  return DE_FACING_TO_DIR[String(signFacing).trim().toUpperCase()] || null;
+  return null;
 }
 
 function deRouteMatches(attrs, parsedRef) {
@@ -411,14 +419,13 @@ async function updateMilepostAndDirection(lat, lon) {
     if (!routeCandidates.length) continue;
 
     // Reject opposite-carriageway markers whenever we know our direction
-    // and the marker declares its own. DE's layer appears to have a real
-    // per-marker direction field (SIGN_FACING, mapped to f.direction via
-    // parseDeMilemarkerDirection) — unlike MD, which had none at all. If
-    // SIGN_FACING turns out unreliable or its values don't match the
-    // DE_FACING_TO_DIR mapping in practice, every marker will fall through
-    // to "no direction data, keep everything" the same way MD's did, so
-    // this degrades safely either way — just check the Debug panel's
-    // sampleRouteAttrs to see what's actually coming back.
+    // and the marker declares its own. DE's layer has a SIGN_FACING field
+    // that looked like real per-marker direction data, but a live sample
+    // showed "E" on an I-95 marker (a north-south interstate) — confirmed
+    // unreliable, so parseDeMilemarkerDirection() always returns null now
+    // and every marker falls through to "no direction data, keep
+    // everything" here, same as MD's setup. Direction comes from bearing
+    // alone (bearingDirection/highwayDirectionLabel below) instead.
     let candidates = routeCandidates;
     const dirGuess = bearingDirection || highwayDirectionLabel;
     if (dirGuess) {
