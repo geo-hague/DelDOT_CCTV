@@ -41,10 +41,51 @@ const DE_DMS_DIR_WORDS = {
   NB: 'Northbound', SB: 'Southbound', EB: 'Eastbound', WB: 'Westbound',
 };
 
-function parseDeDmsLocation(title) {
+// Manual lookup by permit — DE's title field frequently omits direction
+// entirely (confirmed real: "I 495 @ 12TH STREET EXIT" for a sign that's
+// actually southbound-specific, no NB/SB/etc. anywhere in the text). With
+// only ~23 VMS signs statewide, a hand-maintained map is more reliable
+// than guessing from geometry (which would need real road-shape data we
+// don't currently fetch, plus untested left/right-of-centerline math —
+// a bigger, riskier feature for a driving app to get subtly wrong).
+// Checked FIRST, before title-text parsing, since it's authoritative when
+// present. Complete set — all 23 DE VMS signs statewide, confirmed
+// manually. If DelDOT ever adds a new sign, unlisted permits just fall
+// through to the (often unsuccessful) title parse below, same as before —
+// unlisted permits just fall through to the (often unsuccessful) title
+// parse below, same as before.
+const DE_VMS_PERMIT_DIRECTIONS = {
+  KVMS001: 'Southbound', // "DE 1 @ NORTH OF THOMPSONVILLE"
+  KVMS002: 'Northbound', // "DE 1 @ DE 9"
+  KVMS003: 'Southbound', // "DE 1 @ 0.84 MILES SOUTH OFF NORTH FREDERICA INTERCHANGE"
+  KVMS004: 'Northbound', // "DE 1 @ 0.62 MILES NORTH OFF OLD CEMETERY ROAD"
+  KVMS006: 'Southbound', // "DE 1 SB @ 1/2 MILE NORTH OF BO"
+  NVMS001: 'Northbound', // "DE 72 @ DE 1 SB OFF RAMP"
+  NVMS002: 'Northbound', // "I 95 @ DE 896 INTERCHANGE NB"
+  NVMS003: 'Northbound', // "I 95 @ CHURCHMANS OFF RAMP"
+  NVMS004: 'Southbound', // "I 95 @ NORTH OF PA STATE LINE"
+  NVMS006: 'Northbound', // "I 495 @ US 13 - SOUTHERN INTERCHANGE"
+  NVMS007: 'Southbound', // "I 495 @ 12TH STREET EXIT"
+  NVMS008: 'Southbound', // "I 95 @ EAST OF CHURCHMANS ROAD IN MARSH AREA"
+  NVMS010: 'Southbound', // "DE 1 SB @ KIRKWOOD ST GEORGES"
+  NVMS011: 'Northbound', // "US 301 NORTHBOUND @ SOUTH OF B"
+  NVMS012: 'Southbound', // "I 95 SB @ STONEY CREEK"
+  NVMS013: 'Southbound', // "I 495 SB @ SUNSET DRIVE"
+  NVMS017: 'Northbound', // "SR 1 NB @ NORTH OF BEAR RD RAM"
+  NVMS018: 'Northbound', // "SR 1 NB @ NORTH OF US 40"
+  NVMS019: 'Northbound', // "I 95 NB @ SOUTH OF DE 1"
+  SVMS001: 'Northbound', // "DE 1 @ JOHNSON RD"
+  SVMS004: 'Southbound', // "US 113 SOUTHBOUND @ SOUTH OF A"
+  SVMS005: 'Northbound', // "US 113 NORTHBOUND @ NORTH OLD"
+  SVMS009: 'Northbound', // "DE 1 @ OAKWOOD ST"
+};
+
+function parseDeDmsLocation(title, permit) {
   if (!title) return { roadway: null, direction: null };
   const t = title.toUpperCase();
   const roadway = normalizeHighwayName(t);
+  const permitDirection = permit ? DE_VMS_PERMIT_DIRECTIONS[permit.toUpperCase()] : null;
+  if (permitDirection) return { roadway, direction: permitDirection };
   const dirMatch = t.match(/\b(NORTHBOUND|SOUTHBOUND|EASTBOUND|WESTBOUND|NB|SB|EB|WB)\b/);
   const direction = dirMatch ? DE_DMS_DIR_WORDS[dirMatch[1]] : null;
   return { roadway, direction };
@@ -87,7 +128,7 @@ function parseDeDmsSigns(records) {
       const lat = Number(r.lat);
       const lon = Number(r.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-      const { roadway, direction } = parseDeDmsLocation(r.title);
+      const { roadway, direction } = parseDeDmsLocation(r.title, r.permit);
       const msgText = stripDeMessageHtml(r.message);
       return {
         Id: r.permit || r.systemId,
